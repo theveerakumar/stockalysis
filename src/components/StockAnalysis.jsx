@@ -10,7 +10,7 @@ async function fetchDaily(ticker) {
   const r = await fetch(`${AV}?function=TIME_SERIES_DAILY&symbol=${ticker}&apikey=${KEY}`)
   const j = await r.json()
   const ts = j['Time Series (Daily)']
-  if (!ts) throw new Error(j.Note || 'No daily data')
+  if (!ts) return []
   return Object.entries(ts).map(([date, v]) => ({
     date, ts: new Date(date).getTime() / 1000,
     open: +v['1. open'], high: +v['2. high'],
@@ -22,7 +22,7 @@ async function fetchWeekly(ticker) {
   const r = await fetch(`${AV}?function=TIME_SERIES_WEEKLY&symbol=${ticker}&apikey=${KEY}`)
   const j = await r.json()
   const ts = j['Weekly Time Series']
-  if (!ts) throw new Error('No weekly data')
+  if (!ts) return []
   return Object.entries(ts).map(([date, v]) => ({
     date, close: +v['4. close'], high: +v['2. high'], low: +v['3. low'],
   })).reverse()
@@ -138,6 +138,10 @@ export default function StockAnalysis() {
         ...d,
         dateLabel: new Date(d.ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       }))
+      if (prices.length === 0) {
+        setError('No data for ' + t + '. Rate limit may be active or ticker invalid.')
+        setLoading(false); return
+      }
 
       const c = prices.map(d => d.close), h = prices.map(d => d.high), l = prices.map(d => d.low), v = prices.map(d => d.volume)
       const wc = weekly.map(d => d.close), wh = weekly.map(d => d.high), wl = weekly.map(d => d.low)
@@ -182,7 +186,7 @@ export default function StockAnalysis() {
       if (lr < 30) score += 20; else if (lr < 45) score += 10; else if (lr > 70) score -= 20; else if (lr > 60) score -= 10
       if (lm > ls) score += 15; else score -= 15
       if (regime === 'trend-up') score += 10; else if (regime === 'trend-down') score -= 10
-      if (lc > s2) score += 10; else score -= 10
+      if (s2 && lc > s2) score += 10; else if (s2) score -= 10
       if (sma20v && sma50v && sma20v > sma50v) score += 5; else score -= 5
       if (vol.level === 'high') score += 5; else if (vol.level === 'low') score -= 5
 
@@ -218,6 +222,7 @@ export default function StockAnalysis() {
       const fib500 = rangeLow + diff * 0.5
       const fib618 = rangeLow + diff * 0.618
       const fib786 = rangeLow + diff * 0.786
+      const weeklyMissing = weekly.length === 0
 
       setData({
         merged, ticker: t, price: lc, close: lc,
@@ -230,7 +235,7 @@ export default function StockAnalysis() {
         entryLow, entryHigh, sl, target, rr,
         qHigh: qHi, qLow: qLo, qReturn: qRet,
         change: merged.length > 1 ? ((lc / merged[merged.length - 2]?.close - 1) * 100).toFixed(2) : '0',
-        overview: overviewData,
+        overview: overviewData, weeklyMissing,
         pivot, r1, r2, s1, pivotS2,
         fib236, fib382, fib500, fib618, fib786,
       })
@@ -419,6 +424,8 @@ export default function StockAnalysis() {
             <span className={`stock-change ${+data.change >= 0 ? 'pos' : 'neg'}`}>{+data.change >= 0 ? '▲' : '▼'} {Math.abs(data.change)}%</span>
             {data.sma200 && <span style={{ fontSize: '0.7rem', color: 'var(--text2)' }}>SMA200: ${fmt(data.sma200)}</span>}
           </div>
+
+          {data.weeklyMissing && <div className="data-warning">Weekly data unavailable — SMA 100/200W and related indicators not computed</div>}
 
           <div className="chart-card">
             <ResponsiveContainer width="100%" height={280}>

@@ -281,6 +281,16 @@ body {
   font-size: 0.8rem;
 }
 
+.data-warning {
+  padding: 0.5rem 0.75rem;
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  border: 1px solid var(--amber);
+  border-radius: 6px;
+  color: var(--amber);
+  font-size: 0.7rem;
+  margin-bottom: 0.75rem;
+}
+
 /* === Header Info Bar === */
 
 .stock-header {
