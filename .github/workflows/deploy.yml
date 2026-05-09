@@ -23,6 +23,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: echo "VITE_ALPHA_KEY=${{ secrets.VITE_ALPHA_KEY }}" >> .env
+      - run: echo "VITE_TWELVEDATA_KEY=${{ secrets.VITE_TWELVEDATA_KEY }}" >> .env
       - run: npm ci
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3

@@ -3,33 +3,30 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 
 const POPULAR = ['AAPL','MSFT','GOOGL','AMZN','TSLA','META','NVDA','JPM','V','JNJ','WMT','PG','MA','UNH','HD','DIS','NFLX','BA','KO','PEP','AMD','INTC','CRM','ADBE','PYPL']
 
-const AV = 'https://www.alphavantage.co/query'
-const KEY = import.meta.env.VITE_ALPHA_KEY
+const TD = 'https://api.twelvedata.com/time_series'
+const TD_KEY = import.meta.env.VITE_TWELVEDATA_KEY
 
 async function fetchDaily(ticker) {
   for (let a = 0; a < 2; a++) {
-    const r = await fetch(`${AV}?function=TIME_SERIES_DAILY&symbol=${ticker}&apikey=${KEY}`)
+    const r = await fetch(`${TD}?symbol=${ticker}&interval=1day&outputsize=500&apikey=${TD_KEY}`)
     const j = await r.json()
-    const ts = j['Time Series (Daily)']
-    if (ts) return Object.entries(ts).map(([date, v]) => ({
-      date, ts: new Date(date).getTime() / 1000,
-      open: +v['1. open'], high: +v['2. high'],
-      low: +v['3. low'], close: +v['4. close'], volume: +v['5. volume'],
+    if (j.values) return j.values.map(v => ({
+      date: v.datetime, ts: new Date(v.datetime).getTime() / 1000,
+      open: +v.open, high: +v.high, low: +v.low, close: +v.close, volume: +v.volume,
     })).reverse()
-    if (j.Note && a === 0) await new Promise(r => setTimeout(r, 1500))
+    if (j.code === 429 && a === 0) await new Promise(r => setTimeout(r, 1500))
     else return []
   }
 }
 
 async function fetchWeekly(ticker) {
   for (let a = 0; a < 2; a++) {
-    const r = await fetch(`${AV}?function=TIME_SERIES_WEEKLY&symbol=${ticker}&apikey=${KEY}`)
+    const r = await fetch(`${TD}?symbol=${ticker}&interval=1week&outputsize=200&apikey=${TD_KEY}`)
     const j = await r.json()
-    const ts = j['Weekly Time Series']
-    if (ts) return Object.entries(ts).map(([date, v]) => ({
-      date, close: +v['4. close'], high: +v['2. high'], low: +v['3. low'],
+    if (j.values) return j.values.map(v => ({
+      date: v.datetime, close: +v.close, high: +v.high, low: +v.low,
     })).reverse()
-    if (j.Note && a === 0) await new Promise(r => setTimeout(r, 1500))
+    if (j.code === 429 && a === 0) await new Promise(r => setTimeout(r, 1500))
     else return []
   }
 }
@@ -46,26 +43,28 @@ async function fetchSearch(query) {
       }
     } catch {}
   }
-  try {
-    const r = await fetch(`${AV}?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${KEY}`)
-    const j = await r.json()
-    if (j.Note) return { error: 'Rate limit reached. Try again in a moment.' }
-    return { results: (j.bestMatches || []).map(m => ({
-      symbol: m['1. symbol'], name: m['2. name'], region: m['4. region'],
-    })) }
-  } catch { return { results: [] } }
+  return { results: [] }
 }
 
 async function fetchOverview(ticker) {
   try {
-    const r = await fetch(`${AV}?function=OVERVIEW&symbol=${ticker}&apikey=${KEY}`)
-    const j = await r.json()
-    if (j.Note || !j.Symbol) return null
+    const [pr, mr] = await Promise.all([
+      fetch(`${FH}/stock/profile2?symbol=${ticker}&token=${FH_KEY}`),
+      fetch(`${FH}/stock/metric?symbol=${ticker}&metric=all&token=${FH_KEY}`),
+    ])
+    const p = await pr.json()
+    const md = await mr.json()
+    const m = md.metric || {}
+    if (!p.ticker) return null
     return {
-      marketCap: j.MarketCapitalization, peRatio: j.PERatio, eps: j.EPS,
-      dividendYield: j.DividendYield, beta: j.Beta,
-      week52High: j['52WeekHigh'], week52Low: j['52WeekLow'],
-      sector: j.Sector, industry: j.Industry,
+      marketCap: p.marketCapitalization * 1e6,
+      peRatio: m.peTTM,
+      eps: m.epsTTM,
+      dividendYield: m.currentDividendYieldTTM != null ? m.currentDividendYieldTTM / 100 : null,
+      beta: m.beta,
+      week52High: m['52WeekHigh'],
+      week52Low: m['52WeekLow'],
+      sector: p.finnhubIndustry,
     }
   } catch { return null }
 }

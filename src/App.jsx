@@ -18,7 +18,7 @@ function App() {
         <StockAnalysis />
       </main>
       <footer className="footer">
-        <p>stockalysis &copy; {new Date().getFullYear()} &mdash; Data: Alpha Vantage</p>
+        <p>stockalysis &copy; {new Date().getFullYear()} &mdash; Data: Twelve Data, Finnhub</p>
       </footer>
     </div>
   )
