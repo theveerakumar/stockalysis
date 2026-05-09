@@ -46,9 +46,6 @@ async function fetchSearch(query) {
   return { results: [] }
 }
 
-const FH = 'https://finnhub.io/api/v1'
-const FH_KEY = import.meta.env.VITE_FINNHUB_KEY
-
 async function fetchOverview(ticker) {
   try {
     const [pr, mr] = await Promise.all([
@@ -71,6 +68,9 @@ async function fetchOverview(ticker) {
     }
   } catch { return null }
 }
+
+const FH = 'https://finnhub.io/api/v1'
+const FH_KEY = import.meta.env.VITE_FINNHUB_KEY
 
 async function fetchEarnings(ticker) {
   if (!FH_KEY) return null
