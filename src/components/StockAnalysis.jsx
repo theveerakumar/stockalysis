@@ -53,6 +53,36 @@ async function fetchOverview(ticker) {
   } catch { return null }
 }
 
+const FH = 'https://finnhub.io/api/v1'
+const FH_KEY = import.meta.env.VITE_FINNHUB_KEY
+
+async function fetchEarnings(ticker) {
+  if (!FH_KEY) return null
+  try {
+    const r = await fetch(`${FH}/stock/earnings?symbol=${ticker}&token=${FH_KEY}`)
+    const j = await r.json()
+    if (!Array.isArray(j)) return null
+    return j.slice(0, 4).map(e => ({
+      quarter: `Q${e.quarter} ${e.year}`, actual: e.actual, estimate: e.estimate, surprise: e.surprisePercent,
+    }))
+  } catch { return null }
+}
+
+async function fetchRecommendations(ticker) {
+  if (!FH_KEY) return null
+  try {
+    const r = await fetch(`${FH}/stock/recommendation?symbol=${ticker}&token=${FH_KEY}`)
+    const j = await r.json()
+    if (!Array.isArray(j) || j.length === 0) return null
+    const l = j[0]
+    const total = l.strongBuy + l.buy + l.hold + l.sell + l.strongSell
+    if (total === 0) return null
+    const score = (l.strongBuy * 2 + l.buy + l.hold * 0 - l.sell - l.strongSell * 2) / total
+    const label = score >= 1.5 ? 'Strong Buy' : score >= 0.5 ? 'Buy' : score >= -0.5 ? 'Hold' : score >= -1.5 ? 'Sell' : 'Strong Sell'
+    return { strongBuy: l.strongBuy, buy: l.buy, hold: l.hold, sell: l.sell, strongSell: l.strongSell, total, score: Math.round(score * 100) / 100, label }
+  } catch { return null }
+}
+
 function calcSMA(data, period) {
   const r = []
   for (let i = 0; i < data.length; i++) {
@@ -247,7 +277,11 @@ export default function StockAnalysis() {
       const fib618 = rangeLow + diff * 0.618
       const fib786 = rangeLow + diff * 0.786
       const weeklyMissing = weekly.length === 0
-      const overviewData = await fetchOverview(t).catch(() => null)
+      const [overviewData, earningsData, recData] = await Promise.all([
+        fetchOverview(t).catch(() => null),
+        fetchEarnings(t).catch(() => null),
+        fetchRecommendations(t).catch(() => null),
+      ])
 
       setData({
         merged, ticker: t, price: lc, close: lc,
@@ -261,6 +295,7 @@ export default function StockAnalysis() {
         qHigh: qHi, qLow: qLo, qReturn: qRet,
         change: merged.length > 1 ? ((lc / merged[merged.length - 2]?.close - 1) * 100).toFixed(2) : '0',
         overview: overviewData, weeklyMissing,
+        earnings: earningsData, recommendations: recData,
         pivot, r1, r2, s1, pivotS2,
         fib236, fib382, fib500, fib618, fib786,
       })
@@ -571,6 +606,50 @@ export default function StockAnalysis() {
               <div className="ov-unavailable">Fundamental data unavailable</div>
             )}
           </div>
+
+          {(data.earnings || data.recommendations) && <div className="sidebar-card">
+            <div className="sidebar-title">Financial Info</div>
+            {data.earnings && <>
+              <div className="fin-subtitle">Earnings Surprise</div>
+              <div className="earnings-table">
+                <div className="earnings-hdr">
+                  <span>Quarter</span><span>Est</span><span>Act</span><span>Surp</span>
+                </div>
+                {data.earnings.map(e => (
+                  <div className="earnings-row" key={e.quarter}>
+                    <span className="e-q">{e.quarter}</span>
+                    <span className="e-n">${e.estimate?.toFixed(2) || '—'}</span>
+                    <span className="e-n">${e.actual?.toFixed(2) || '—'}</span>
+                    <span className={`e-s ${e.surprise >= 0 ? 'pos' : 'neg'}`}>
+                      {e.surprise >= 0 ? '+' : ''}{e.surprise?.toFixed(1) || '—'}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>}
+            {data.recommendations && <>
+              <div className="fin-divider"></div>
+              <div className="fin-subtitle">Analyst Consensus</div>
+              <div className="rec-bar">
+                {data.recommendations.strongBuy > 0 && <div className="rec-seg sb" style={{width:`${data.recommendations.strongBuy/data.recommendations.total*100}%`}} />}
+                {data.recommendations.buy > 0 && <div className="rec-seg buy" style={{width:`${data.recommendations.buy/data.recommendations.total*100}%`}} />}
+                {data.recommendations.hold > 0 && <div className="rec-seg hold" style={{width:`${data.recommendations.hold/data.recommendations.total*100}%`}} />}
+                {data.recommendations.sell > 0 && <div className="rec-seg sell" style={{width:`${data.recommendations.sell/data.recommendations.total*100}%`}} />}
+                {data.recommendations.strongSell > 0 && <div className="rec-seg ss" style={{width:`${data.recommendations.strongSell/data.recommendations.total*100}%`}} />}
+              </div>
+              <div className="rec-labels">
+                <span>SB {data.recommendations.strongBuy}</span>
+                <span>B {data.recommendations.buy}</span>
+                <span>H {data.recommendations.hold}</span>
+                <span>S {data.recommendations.sell}</span>
+                <span>SS {data.recommendations.strongSell}</span>
+              </div>
+              <div className="rec-score">
+                Consensus: <strong className={`rl-${data.recommendations.label.toLowerCase().replace(' ','-')}`}>{data.recommendations.label}</strong>
+                <span className="rec-rating">({data.recommendations.score})</span>
+              </div>
+            </>}
+          </div>}
 
           <div className="sidebar-card">
             <div className="sidebar-title">Key Levels</div>

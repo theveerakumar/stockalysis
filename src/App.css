@@ -630,6 +630,98 @@ body {
   margin: 0.35rem 0;
 }
 
+/* === Financial Info === */
+
+.fin-subtitle {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text3);
+  margin-bottom: 0.3rem;
+}
+
+.fin-divider {
+  height: 1px;
+  background: var(--surface3);
+  margin: 0.4rem 0;
+}
+
+.earnings-table {
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+}
+
+.earnings-hdr {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 0.2rem;
+  color: var(--text2);
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding-bottom: 0.15rem;
+  border-bottom: 1px solid var(--surface3);
+  margin-bottom: 0.15rem;
+}
+
+.earnings-hdr span:not(:first-child) { text-align: right; }
+
+.earnings-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 0.2rem;
+  padding: 0.12rem 0;
+}
+
+.earnings-row span:not(:first-child) { text-align: right; }
+
+.e-q { color: var(--text); }
+.e-n { color: var(--text3); }
+.e-s { font-weight: 600; }
+.e-s.pos { color: var(--green); }
+.e-s.neg { color: var(--red); }
+
+.rec-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.3rem;
+}
+
+.rec-seg.sb { background: #16a34a; }
+.rec-seg.buy { background: var(--green); }
+.rec-seg.hold { background: var(--amber); }
+.rec-seg.sell { background: var(--red); }
+.rec-seg.ss { background: #991b1b; }
+
+.rec-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.55rem;
+  color: var(--text2);
+  margin-bottom: 0.3rem;
+}
+
+.rec-score {
+  font-size: 0.65rem;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.rec-rating {
+  font-size: 0.6rem;
+  color: var(--text3);
+}
+
+.rl-strong-buy { color: #16a34a; }
+.rl-buy { color: var(--green); }
+.rl-hold { color: var(--amber); }
+.rl-sell { color: var(--red); }
+.rl-strong-sell { color: #991b1b; }
+
 /* === Responsive === */
 
 @media (max-width: 800px) {
