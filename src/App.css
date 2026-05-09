@@ -34,7 +34,7 @@ body {
 }
 
 .app {
-  max-width: 780px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 1.5rem 1rem;
   min-height: 100vh;
@@ -507,6 +507,123 @@ body {
 .regime-strat {
   color: var(--text2);
   font-size: 0.7rem;
+}
+
+/* === Two-Column Layout === */
+
+.stock-layout {
+  display: grid;
+  grid-template-columns: 1fr 240px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.stock-main { min-width: 0; }
+
+.stock-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sidebar-card {
+  background: var(--surface);
+  border: 1px solid var(--surface3);
+  border-radius: 6px;
+  padding: 0.65rem;
+}
+
+.sidebar-title {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text2);
+  font-weight: 600;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--surface3);
+  margin-bottom: 0.5rem;
+}
+
+/* === Overview Grid === */
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 0.6rem;
+}
+
+.overview-item.full { grid-column: 1 / -1; }
+
+.ov-label {
+  display: block;
+  font-size: 0.6rem;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.ov-value {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.ov-unavailable {
+  font-size: 0.7rem;
+  color: var(--text2);
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+/* === Key Levels === */
+
+.levels-section { margin-bottom: 0.25rem; }
+
+.levels-subtitle {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text3);
+  margin-bottom: 0.25rem;
+}
+
+.level-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.1rem 0;
+}
+
+.level-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text2);
+}
+
+.level-label.pivot { color: var(--accent); font-weight: 700; }
+
+.level-value {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.level-value.pivot { color: var(--accent); font-weight: 700; }
+
+.levels-divider {
+  height: 1px;
+  background: var(--surface3);
+  margin: 0.35rem 0;
+}
+
+/* === Responsive === */
+
+@media (max-width: 800px) {
+  .stock-layout { grid-template-columns: 1fr; }
 }
 
 .footer {

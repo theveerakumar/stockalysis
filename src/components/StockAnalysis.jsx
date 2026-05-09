@@ -126,11 +126,12 @@ export default function StockAnalysis() {
   const searchCache = useRef(new Map())
   const searchRef = useRef(null)
   const debounceRef = useRef(null)
+  const overviewCache = useRef(new Map())
 
   const load = useCallback(async (t, p) => {
     setLoading(true); setError(null)
     try {
-      const [daily, weekly] = await Promise.all([fetchDaily(t), fetchWeekly(t)])
+      const [daily, weekly, overviewData] = await Promise.all([fetchDaily(t), fetchWeekly(t), fetchOverview(t)])
       const days = p === '1y' ? 100 : 63
 
       const prices = daily.slice(-days).map(d => ({
@@ -201,6 +202,23 @@ export default function StockAnalysis() {
       const qLo = Math.min(...qSlice.map(p => p.low).filter(Boolean))
       const qRet = merged.length > 63 ? ((lc / merged[merged.length - 64]?.close - 1) * 100).toFixed(1) : '—'
 
+      const pivotH = last?.high || lc
+      const pivotL = last?.low || lc
+      const pivot = (pivotH + pivotL + lc) / 3
+      const r1 = 2 * pivot - pivotL
+      const r2 = pivot + (pivotH - pivotL)
+      const s1 = 2 * pivot - pivotH
+      const pivotS2 = pivot - (pivotH - pivotL)
+
+      const rangeHigh = Math.max(...h.filter(Boolean))
+      const rangeLow = Math.min(...l.filter(Boolean))
+      const diff = rangeHigh - rangeLow
+      const fib236 = rangeLow + diff * 0.236
+      const fib382 = rangeLow + diff * 0.382
+      const fib500 = rangeLow + diff * 0.5
+      const fib618 = rangeLow + diff * 0.618
+      const fib786 = rangeLow + diff * 0.786
+
       setData({
         merged, ticker: t, price: lc, close: lc,
         rsi: lr, macd: lm, macdSignal: ls, macdHist: last?.macdHist || 0,
@@ -212,6 +230,9 @@ export default function StockAnalysis() {
         entryLow, entryHigh, sl, target, rr,
         qHigh: qHi, qLow: qLo, qReturn: qRet,
         change: merged.length > 1 ? ((lc / merged[merged.length - 2]?.close - 1) * 100).toFixed(2) : '0',
+        overview: overviewData,
+        pivot, r1, r2, s1, pivotS2,
+        fib236, fib382, fib500, fib618, fib786,
       })
       setLoading(false)
     } catch (e) {
@@ -236,6 +257,29 @@ export default function StockAnalysis() {
       searchCache.current.set(query, matches)
       return matches
     } catch { return [] }
+  }
+
+  async function fetchOverview(ticker) {
+    const cached = overviewCache.current.get(ticker)
+    if (cached) return cached
+    try {
+      const r = await fetch(`${AV}?function=OVERVIEW&symbol=${ticker}&apikey=${KEY}`)
+      const j = await r.json()
+      if (j.Note || !j.Symbol) return null
+      const data = {
+        marketCap: j.MarketCapitalization,
+        peRatio: j.PERatio,
+        eps: j.EPS,
+        dividendYield: j.DividendYield,
+        beta: j.Beta,
+        week52High: j['52WeekHigh'],
+        week52Low: j['52WeekLow'],
+        sector: j.Sector,
+        industry: j.Industry,
+      }
+      overviewCache.current.set(ticker, data)
+      return data
+    } catch { return null }
   }
 
   useEffect(() => {
@@ -293,6 +337,14 @@ export default function StockAnalysis() {
 
   const fmt = (n) => n === null || n === undefined ? '—' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const fmtInt = (n) => n === null || n === undefined ? '—' : n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  const fmtCap = (n) => {
+    if (!n) return '—'
+    const v = +n
+    if (v >= 1e12) return '$' + (v / 1e12).toFixed(2) + 'T'
+    if (v >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B'
+    if (v >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M'
+    return '$' + fmt(v)
+  }
 
   const Ct = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null
@@ -359,122 +411,189 @@ export default function StockAnalysis() {
       {loading && <div className="stock-loading"><div className="spinner"></div><span>Loading {ticker}...</span></div>}
       {error && <div className="stock-error">{error}. Try another ticker.</div>}
 
-      {data && !loading && <>
-        <div className="stock-header">
-          <span className="stock-ticker">{data.ticker}</span>
-          <span className="stock-price">${fmt(data.price)}</span>
-          <span className={`stock-change ${+data.change >= 0 ? 'pos' : 'neg'}`}>{+data.change >= 0 ? '▲' : '▼'} {Math.abs(data.change)}%</span>
-          {data.sma200 && <span style={{ fontSize: '0.7rem', color: 'var(--text2)' }}>SMA200: ${fmt(data.sma200)}</span>}
-        </div>
-
-        <div className="chart-card">
-          <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={data.merged}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--surface3)" />
-              <XAxis dataKey="dateLabel" tick={{ fill: 'var(--text2)', fontSize: 9 }} interval="preserveStartEnd" />
-              <YAxis domain={['auto', 'auto']} tick={{ fill: 'var(--text2)', fontSize: 9 }} />
-              <Tooltip content={<Ct />} />
-              <Legend wrapperStyle={{ fontSize: 10, color: 'var(--text2)' }} />
-              <Area type="monotone" dataKey="bbUpper" stroke="transparent" fill="var(--accent)" fillOpacity={0.04} />
-              <Area type="monotone" dataKey="bbLower" stroke="transparent" fill="var(--accent)" fillOpacity={0.04} />
-              <Line type="monotone" dataKey="close" stroke="var(--accent)" name="Price" dot={false} strokeWidth={2} />
-              <Line type="monotone" dataKey="sma20" stroke="var(--green)" name="SMA 20" dot={false} strokeWidth={1} strokeDasharray="4 2" />
-              <Line type="monotone" dataKey="sma50" stroke="var(--amber)" name="SMA 50" dot={false} strokeWidth={1} />
-              <Line type="monotone" dataKey="bbUpper" stroke="var(--text2)" name="B.Band" dot={false} strokeWidth={0.5} />
-              <Line type="monotone" dataKey="bbLower" stroke="var(--text2)" name="" dot={false} strokeWidth={0.5} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="regime-line">
-          <span className={`regime-badge ${data.regime}`}>{data.regime.replace('-', ' ').toUpperCase()}</span>
-          <span className="regime-strat">{data.trade}</span>
-        </div>
-
-        <div className={`signal-banner ${data.signalClass}`}>
-          <span className="signal-label">SIGNAL</span>
-          <span className="signal-value">{data.overall}</span>
-          <span className="signal-conf">{data.conf}% confidence</span>
-        </div>
-
-        <div className="indicator-grid">
-          <div className="indicator-card">
-            <span className="indicator-name">RSI {fmt(data.rsi)}</span>
-            <span className={`indicator-status ${data.rsi > 70 ? 'overbought' : data.rsi < 30 ? 'oversold' : 'neutral'}`}>
-              {data.rsi > 70 ? 'Overbought' : data.rsi < 30 ? 'Oversold' : 'Neutral'}
-            </span>
-            <span className="indicator-desc">{data.rsi < 30 ? 'Oversold — potential bounce zone' : data.rsi > 70 ? 'Overbought — caution on longs' : 'Neutral range'}</span>
+      {data && !loading && <div className="stock-layout">
+        <div className="stock-main">
+          <div className="stock-header">
+            <span className="stock-ticker">{data.ticker}</span>
+            <span className="stock-price">${fmt(data.price)}</span>
+            <span className={`stock-change ${+data.change >= 0 ? 'pos' : 'neg'}`}>{+data.change >= 0 ? '▲' : '▼'} {Math.abs(data.change)}%</span>
+            {data.sma200 && <span style={{ fontSize: '0.7rem', color: 'var(--text2)' }}>SMA200: ${fmt(data.sma200)}</span>}
           </div>
-          <div className="indicator-card">
-            <span className="indicator-name">MACD {fmt(data.macd)}</span>
-            <span className={`indicator-status ${data.macd > data.macdSignal ? 'bullish' : 'bearish'}`}>
-              {data.macd > data.macdSignal ? 'Bullish' : 'Bearish'}
-            </span>
-            <span className="indicator-desc">{data.macd > data.macdSignal ? 'Momentum turning up' : 'Momentum fading'} | Hist: {fmt(data.macdHist)}</span>
-          </div>
-          <div className="indicator-card">
-            <span className="indicator-name">ADX {fmt(data.adx)}</span>
-            <span className={`indicator-status ${data.adx >= 25 ? 'trending' : 'neutral'}`}>
-              {data.adx >= 25 ? 'Trending' : 'Ranging'}
-            </span>
-            <span className="indicator-desc">+DI: {fmt(data.pdi)} / -DI: {fmt(data.mdi)}</span>
-          </div>
-          <div className="indicator-card">
-            <span className="indicator-name">SMAs</span>
-            <span className="indicator-desc">
-              20: {data.sma20 ? '$' + fmt(data.sma20) : '—'} &nbsp; 50: {data.sma50 ? '$' + fmt(data.sma50) : '—'}
-            </span>
-            <span className="indicator-desc" style={{ marginTop: '0.1rem' }}>
-              100W: {data.sma100 ? '$' + fmt(data.sma100) : '—'} &nbsp; 200W: {data.sma200 ? '$' + fmt(data.sma200) : '—'}
-            </span>
-            {data.sma20 && data.sma50 && <span className="indicator-desc" style={{ color: data.sma20 > data.sma50 ? 'var(--green)' : 'var(--red)' }}>
-              {data.sma20 > data.sma50 ? 'Golden cross setup' : 'Death cross setup'}
-            </span>}
-          </div>
-        </div>
 
-        <div className="entry-box">
-          <div className="entry-row">
-            <div className="entry-item">
-              <span className="label">Entry Zone</span>
-              <span className="value green">${fmt(data.entryLow)} – ${fmt(data.entryHigh)}</span>
+          <div className="chart-card">
+            <ResponsiveContainer width="100%" height={280}>
+              <ComposedChart data={data.merged}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--surface3)" />
+                <XAxis dataKey="dateLabel" tick={{ fill: 'var(--text2)', fontSize: 9 }} interval="preserveStartEnd" />
+                <YAxis domain={['auto', 'auto']} tick={{ fill: 'var(--text2)', fontSize: 9 }} />
+                <Tooltip content={<Ct />} />
+                <Legend wrapperStyle={{ fontSize: 10, color: 'var(--text2)' }} />
+                <Area type="monotone" dataKey="bbUpper" stroke="transparent" fill="var(--accent)" fillOpacity={0.04} />
+                <Area type="monotone" dataKey="bbLower" stroke="transparent" fill="var(--accent)" fillOpacity={0.04} />
+                <Line type="monotone" dataKey="close" stroke="var(--accent)" name="Price" dot={false} strokeWidth={2} />
+                <Line type="monotone" dataKey="sma20" stroke="var(--green)" name="SMA 20" dot={false} strokeWidth={1} strokeDasharray="4 2" />
+                <Line type="monotone" dataKey="sma50" stroke="var(--amber)" name="SMA 50" dot={false} strokeWidth={1} />
+                <Line type="monotone" dataKey="bbUpper" stroke="var(--text2)" name="B.Band" dot={false} strokeWidth={0.5} />
+                <Line type="monotone" dataKey="bbLower" stroke="var(--text2)" name="" dot={false} strokeWidth={0.5} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="regime-line">
+            <span className={`regime-badge ${data.regime}`}>{data.regime.replace('-', ' ').toUpperCase()}</span>
+            <span className="regime-strat">{data.trade}</span>
+          </div>
+
+          <div className={`signal-banner ${data.signalClass}`}>
+            <span className="signal-label">SIGNAL</span>
+            <span className="signal-value">{data.overall}</span>
+            <span className="signal-conf">{data.conf}% confidence</span>
+          </div>
+
+          <div className="indicator-grid">
+            <div className="indicator-card">
+              <span className="indicator-name">RSI {fmt(data.rsi)}</span>
+              <span className={`indicator-status ${data.rsi > 70 ? 'overbought' : data.rsi < 30 ? 'oversold' : 'neutral'}`}>
+                {data.rsi > 70 ? 'Overbought' : data.rsi < 30 ? 'Oversold' : 'Neutral'}
+              </span>
+              <span className="indicator-desc">{data.rsi < 30 ? 'Oversold — potential bounce zone' : data.rsi > 70 ? 'Overbought — caution on longs' : 'Neutral range'}</span>
             </div>
-            <div className="entry-item">
-              <span className="label">Stop Loss</span>
-              <span className="value red">${fmt(data.sl)}</span>
+            <div className="indicator-card">
+              <span className="indicator-name">MACD {fmt(data.macd)}</span>
+              <span className={`indicator-status ${data.macd > data.macdSignal ? 'bullish' : 'bearish'}`}>
+                {data.macd > data.macdSignal ? 'Bullish' : 'Bearish'}
+              </span>
+              <span className="indicator-desc">{data.macd > data.macdSignal ? 'Momentum turning up' : 'Momentum fading'} | Hist: {fmt(data.macdHist)}</span>
             </div>
-            <div className="entry-item">
-              <span className="label">Target</span>
-              <span className="value green">${fmt(data.target)}</span>
+            <div className="indicator-card">
+              <span className="indicator-name">ADX {fmt(data.adx)}</span>
+              <span className={`indicator-status ${data.adx >= 25 ? 'trending' : 'neutral'}`}>
+                {data.adx >= 25 ? 'Trending' : 'Ranging'}
+              </span>
+              <span className="indicator-desc">+DI: {fmt(data.pdi)} / -DI: {fmt(data.mdi)}</span>
             </div>
-            <div className="entry-item">
-              <span className="label">Risk/Reward</span>
-              <span className="value">{data.rr}</span>
+            <div className="indicator-card">
+              <span className="indicator-name">SMAs</span>
+              <span className="indicator-desc">
+                20: {data.sma20 ? '$' + fmt(data.sma20) : '—'} &nbsp; 50: {data.sma50 ? '$' + fmt(data.sma50) : '—'}
+              </span>
+              <span className="indicator-desc" style={{ marginTop: '0.1rem' }}>
+                100W: {data.sma100 ? '$' + fmt(data.sma100) : '—'} &nbsp; 200W: {data.sma200 ? '$' + fmt(data.sma200) : '—'}
+              </span>
+              {data.sma20 && data.sma50 && <span className="indicator-desc" style={{ color: data.sma20 > data.sma50 ? 'var(--green)' : 'var(--red)' }}>
+                {data.sma20 > data.sma50 ? 'Golden cross setup' : 'Death cross setup'}
+              </span>}
             </div>
           </div>
-          {data.rr !== '—' && <div className="rr-bar"><div className="rr-fill" style={{ width: `${Math.min(100, +data.rr * 50)}%` }}></div></div>}
+
+          <div className="entry-box">
+            <div className="entry-row">
+              <div className="entry-item">
+                <span className="label">Entry Zone</span>
+                <span className="value green">${fmt(data.entryLow)} – ${fmt(data.entryHigh)}</span>
+              </div>
+              <div className="entry-item">
+                <span className="label">Stop Loss</span>
+                <span className="value red">${fmt(data.sl)}</span>
+              </div>
+              <div className="entry-item">
+                <span className="label">Target</span>
+                <span className="value green">${fmt(data.target)}</span>
+              </div>
+              <div className="entry-item">
+                <span className="label">Risk/Reward</span>
+                <span className="value">{data.rr}</span>
+              </div>
+            </div>
+            {data.rr !== '—' && <div className="rr-bar"><div className="rr-fill" style={{ width: `${Math.min(100, +data.rr * 50)}%` }}></div></div>}
+          </div>
+
+          {period === '3mo' && <div className="quarter-box">
+            <span className="quarter-title">Last Quarter</span>
+            <div className="quarter-stats">
+              <span>High: <strong>${fmt(data.qHigh)}</strong></span>
+              <span>Low: <strong>${fmt(data.qLow)}</strong></span>
+              <span>Return: <strong className={+data.qReturn >= 0 ? 'green' : 'red'}>{data.qReturn}%</strong></span>
+              <span>Volume: <strong>{data.volLevel === 'high' ? '▲ High' : data.volLevel === 'low' ? '▼ Low' : '● Avg'}</strong></span>
+            </div>
+          </div>}
+
+          {period === '1y' && <div className="quarter-box">
+            <div className="quarter-stats">
+              <span>Volume vs Avg: <strong className={data.volLevel === 'high' ? 'green' : data.volLevel === 'low' ? 'red' : ''}>
+                {data.volLevel === 'high' ? '▲ ' : data.volLevel === 'low' ? '▼ ' : '● '}{fmtInt(data.volRatio)}x
+              </strong></span>
+              <span>SMA 200: <strong>${data.sma200 ? fmt(data.sma200) : '—'}</strong></span>
+              <span>Price vs SMA200: <strong className={data.price > data.sma200 ? 'green' : 'red'}>{data.price > data.sma200 ? 'Above' : 'Below'}</strong></span>
+            </div>
+          </div>}
         </div>
 
-        {period === '3mo' && <div className="quarter-box">
-          <span className="quarter-title">Last Quarter</span>
-          <div className="quarter-stats">
-            <span>High: <strong>${fmt(data.qHigh)}</strong></span>
-            <span>Low: <strong>${fmt(data.qLow)}</strong></span>
-            <span>Return: <strong className={+data.qReturn >= 0 ? 'green' : 'red'}>{data.qReturn}%</strong></span>
-            <span>Volume: <strong>{data.volLevel === 'high' ? '▲ High' : data.volLevel === 'low' ? '▼ Low' : '● Avg'}</strong></span>
+        <div className="stock-sidebar">
+          <div className="sidebar-card">
+            <div className="sidebar-title">Company Overview</div>
+            {data.overview ? (
+              <div className="overview-grid">
+                <div className="overview-item">
+                  <span className="ov-label">Mkt Cap</span>
+                  <span className="ov-value">{fmtCap(data.overview.marketCap)}</span>
+                </div>
+                <div className="overview-item">
+                  <span className="ov-label">P/E</span>
+                  <span className="ov-value">{data.overview.peRatio ? fmt(+data.overview.peRatio) : '—'}</span>
+                </div>
+                <div className="overview-item">
+                  <span className="ov-label">EPS</span>
+                  <span className="ov-value">{data.overview.eps ? '$' + fmt(+data.overview.eps) : '—'}</span>
+                </div>
+                <div className="overview-item">
+                  <span className="ov-label">Beta</span>
+                  <span className="ov-value">{data.overview.beta ? fmt(+data.overview.beta) : '—'}</span>
+                </div>
+                <div className="overview-item">
+                  <span className="ov-label">Div Yield</span>
+                  <span className="ov-value">{data.overview.dividendYield ? (+data.overview.dividendYield * 100).toFixed(2) + '%' : '—'}</span>
+                </div>
+                <div className="overview-item">
+                  <span className="ov-label">52W High</span>
+                  <span className="ov-value" style={{color:'var(--green)'}}>${data.overview.week52High ? fmt(+data.overview.week52High) : '—'}</span>
+                </div>
+                <div className="overview-item">
+                  <span className="ov-label">52W Low</span>
+                  <span className="ov-value" style={{color:'var(--red)'}}>${data.overview.week52Low ? fmt(+data.overview.week52Low) : '—'}</span>
+                </div>
+                <div className="overview-item full">
+                  <span className="ov-label">Sector</span>
+                  <span className="ov-value">{data.overview.sector || '—'}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="ov-unavailable">Fundamental data unavailable</div>
+            )}
           </div>
-        </div>}
 
-        {period === '1y' && <div className="quarter-box">
-          <div className="quarter-stats">
-            <span>Volume vs Avg: <strong className={data.volLevel === 'high' ? 'green' : data.volLevel === 'low' ? 'red' : ''}>
-              {data.volLevel === 'high' ? '▲ ' : data.volLevel === 'low' ? '▼ ' : '● '}{fmtInt(data.volRatio)}x
-            </strong></span>
-            <span>SMA 200: <strong>${data.sma200 ? fmt(data.sma200) : '—'}</strong></span>
-            <span>Price vs SMA200: <strong className={data.price > data.sma200 ? 'green' : 'red'}>{data.price > data.sma200 ? 'Above' : 'Below'}</strong></span>
+          <div className="sidebar-card">
+            <div className="sidebar-title">Key Levels</div>
+            <div className="levels-section">
+              <div className="levels-subtitle">Pivot Points</div>
+              <div className="level-row"><span className="level-label">R2</span><span className="level-value" style={{color:'var(--red)'}}>${fmt(data.r2)}</span></div>
+              <div className="level-row"><span className="level-label">R1</span><span className="level-value" style={{color:'var(--red)'}}>${fmt(data.r1)}</span></div>
+              <div className="level-row"><span className="level-label pivot">Pivot</span><span className="level-value pivot">${fmt(data.pivot)}</span></div>
+              <div className="level-row"><span className="level-label">S1</span><span className="level-value" style={{color:'var(--green)'}}>${fmt(data.s1)}</span></div>
+              <div className="level-row"><span className="level-label">S2</span><span className="level-value" style={{color:'var(--green)'}}>${fmt(data.pivotS2)}</span></div>
+            </div>
+            <div className="levels-divider"></div>
+            <div className="levels-section">
+              <div className="levels-subtitle">Fibonacci</div>
+              <div className="level-row"><span className="level-label">0.236</span><span className="level-value">${fmt(data.fib236)}</span></div>
+              <div className="level-row"><span className="level-label">0.382</span><span className="level-value">${fmt(data.fib382)}</span></div>
+              <div className="level-row"><span className="level-label">0.500</span><span className="level-value">${fmt(data.fib500)}</span></div>
+              <div className="level-row"><span className="level-label">0.618</span><span className="level-value">${fmt(data.fib618)}</span></div>
+              <div className="level-row"><span className="level-label">0.786</span><span className="level-value">${fmt(data.fib786)}</span></div>
+            </div>
           </div>
-        </div>}
-      </>}
+        </div>
+      </div>}
     </div>
   )
 }
