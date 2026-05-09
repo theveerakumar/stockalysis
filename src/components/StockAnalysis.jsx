@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, Bar, ComposedChart, Area } from 'recharts'
 
 const POPULAR = ['AAPL','MSFT','GOOGL','AMZN','TSLA','META','NVDA','JPM','V','JNJ','WMT','PG','MA','UNH','HD','DIS','NFLX','BA','KO','PEP','AMD','INTC','CRM','ADBE','PYPL']
@@ -113,11 +113,19 @@ function calcVolAvg(volumes) {
 
 export default function StockAnalysis() {
   const [ticker, setTicker] = useState('AAPL')
-  const [custom, setCustom] = useState('')
   const [period, setPeriod] = useState('1y')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
+
+  const searchCache = useRef(new Map())
+  const searchRef = useRef(null)
+  const debounceRef = useRef(null)
 
   const load = useCallback(async (t, p) => {
     setLoading(true); setError(null)
@@ -194,7 +202,7 @@ export default function StockAnalysis() {
       const qRet = merged.length > 63 ? ((lc / merged[merged.length - 64]?.close - 1) * 100).toFixed(1) : '—'
 
       setData({
-        merged, ticker: ticker, price: lc, close: lc,
+        merged, ticker: t, price: lc, close: lc,
         rsi: lr, macd: lm, macdSignal: ls, macdHist: last?.macdHist || 0,
         adx: adxv, pdi: pdv, mdi: mdv, regime, trade,
         sma20: sma20v, sma50: sma50v, sma100: sc, sma200: s2,
@@ -211,10 +219,77 @@ export default function StockAnalysis() {
     }
   }, [])
 
-  useEffect(() => { load(ticker, period) }, [ticker, period, load])
+  useEffect(() => { load(ticker, period) }, [ticker, period])
 
-  const selectTicker = (t) => { setTicker(t); setCustom('') }
-  const handleCustom = () => { if (custom.trim()) { setTicker(custom.trim().toUpperCase()) } }
+  async function fetchSearch(query) {
+    const cached = searchCache.current.get(query)
+    if (cached) return cached
+    try {
+      const r = await fetch(`${AV}?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${KEY}`)
+      const j = await r.json()
+      if (j.Note) return []
+      const matches = (j.bestMatches || []).map(m => ({
+        symbol: m['1. symbol'],
+        name: m['2. name'],
+        region: m['4. region'],
+      }))
+      searchCache.current.set(query, matches)
+      return matches
+    } catch { return [] }
+  }
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (searchQuery.length < 2) {
+      setSearchResults([]); setShowDropdown(false); setSearching(false)
+      return
+    }
+    setSearching(true)
+    debounceRef.current = setTimeout(async () => {
+      const results = await fetchSearch(searchQuery)
+      setSearchResults(results)
+      setShowDropdown(true)
+      setActiveIndex(-1)
+      setSearching(false)
+    }, 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [searchQuery])
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) setShowDropdown(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const selectStock = (item) => {
+    setTicker(item.symbol)
+    setSearchQuery('')
+    setSearchResults([])
+    setShowDropdown(false)
+  }
+
+  const selectPopular = (t) => {
+    setTicker(t)
+    setSearchQuery('')
+    setSearchResults([])
+    setShowDropdown(false)
+  }
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex(prev => prev < searchResults.length - 1 ? prev + 1 : 0)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex(prev => prev > 0 ? prev - 1 : searchResults.length - 1)
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      selectStock(searchResults[activeIndex])
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false)
+    }
+  }
 
   const fmt = (n) => n === null || n === undefined ? '—' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const fmtInt = (n) => n === null || n === undefined ? '—' : n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -227,13 +302,54 @@ export default function StockAnalysis() {
   return (
     <div className="stock-analyzer">
       <div className="stock-controls">
-        <div className="ticker-group">
-          <select value={POPULAR.includes(ticker) ? ticker : ''} onChange={e => selectTicker(e.target.value)}>
-            <option value="">Popular</option>
-            {POPULAR.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <input type="text" placeholder="Ticker" value={custom} onChange={e => setCustom(e.target.value.toUpperCase())} onKeyDown={e => e.key === 'Enter' && handleCustom()} />
-          <button className="go-btn" onClick={handleCustom}>Go</button>
+        <div className="search-wrapper" ref={searchRef}>
+          <div className="search-input-wrap">
+            <span className="search-icon">$</span>
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search stocks by name or ticker..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onFocus={() => { if (searchResults.length > 0) setShowDropdown(true) }}
+              onKeyDown={handleSearchKeyDown}
+            />
+            {searching && <span className="search-spinner" />}
+          </div>
+          {showDropdown && searchResults.length > 0 && (
+            <div className="search-dropdown">
+              {searchResults.map((item, i) => (
+                <div
+                  key={item.symbol}
+                  className={`search-item ${i === activeIndex ? 'active' : ''}`}
+                  onClick={() => selectStock(item)}
+                  onMouseEnter={() => setActiveIndex(i)}
+                >
+                  <span className="search-symbol">{item.symbol}</span>
+                  <span className="search-name">{item.name}</span>
+                  <span className="search-region">{item.region}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {showDropdown && searchResults.length === 0 && !searching && searchQuery.length >= 2 && (
+            <div className="search-dropdown">
+              <div className="search-empty">No results found</div>
+            </div>
+          )}
+          {!searchQuery && (
+            <div className="popular-chips">
+              {POPULAR.map(t => (
+                <button
+                  key={t}
+                  className={`popular-chip ${ticker === t ? 'active' : ''}`}
+                  onClick={() => selectPopular(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="period-group">
           {['1y','3mo'].map(p => <button key={p} className={`period-btn ${period === p ? 'active' : ''}`} onClick={() => setPeriod(p)}>{p === '1y' ? '1 Year' : 'Quarter'}</button>)}
