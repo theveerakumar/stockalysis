@@ -28,6 +28,31 @@ async function fetchWeekly(ticker) {
   })).reverse()
 }
 
+async function fetchSearch(query) {
+  try {
+    const r = await fetch(`${AV}?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${KEY}`)
+    const j = await r.json()
+    if (j.Note) return { error: 'Rate limit reached. Try again in a moment.' }
+    return { results: (j.bestMatches || []).map(m => ({
+      symbol: m['1. symbol'], name: m['2. name'], region: m['4. region'],
+    })) }
+  } catch { return { results: [] } }
+}
+
+async function fetchOverview(ticker) {
+  try {
+    const r = await fetch(`${AV}?function=OVERVIEW&symbol=${ticker}&apikey=${KEY}`)
+    const j = await r.json()
+    if (j.Note || !j.Symbol) return null
+    return {
+      marketCap: j.MarketCapitalization, peRatio: j.PERatio, eps: j.EPS,
+      dividendYield: j.DividendYield, beta: j.Beta,
+      week52High: j['52WeekHigh'], week52Low: j['52WeekLow'],
+      sector: j.Sector, industry: j.Industry,
+    }
+  } catch { return null }
+}
+
 function calcSMA(data, period) {
   const r = []
   for (let i = 0; i < data.length; i++) {
@@ -122,16 +147,15 @@ export default function StockAnalysis() {
   const [searching, setSearching] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
+  const [searchError, setSearchError] = useState(null)
 
-  const searchCache = useRef(new Map())
   const searchRef = useRef(null)
   const debounceRef = useRef(null)
-  const overviewCache = useRef(new Map())
 
   const load = useCallback(async (t, p) => {
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setData(null)
     try {
-      const [daily, weekly, overviewData] = await Promise.all([fetchDaily(t), fetchWeekly(t), fetchOverview(t)])
+      const [daily, weekly] = await Promise.all([fetchDaily(t), fetchWeekly(t)])
       const days = p === '1y' ? 100 : 63
 
       const prices = daily.slice(-days).map(d => ({
@@ -223,6 +247,7 @@ export default function StockAnalysis() {
       const fib618 = rangeLow + diff * 0.618
       const fib786 = rangeLow + diff * 0.786
       const weeklyMissing = weekly.length === 0
+      const overviewData = await fetchOverview(t).catch(() => null)
 
       setData({
         merged, ticker: t, price: lc, close: lc,
@@ -247,56 +272,17 @@ export default function StockAnalysis() {
 
   useEffect(() => { load(ticker, period) }, [ticker, period])
 
-  async function fetchSearch(query) {
-    const cached = searchCache.current.get(query)
-    if (cached) return cached
-    try {
-      const r = await fetch(`${AV}?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${KEY}`)
-      const j = await r.json()
-      if (j.Note) return []
-      const matches = (j.bestMatches || []).map(m => ({
-        symbol: m['1. symbol'],
-        name: m['2. name'],
-        region: m['4. region'],
-      }))
-      searchCache.current.set(query, matches)
-      return matches
-    } catch { return [] }
-  }
-
-  async function fetchOverview(ticker) {
-    const cached = overviewCache.current.get(ticker)
-    if (cached) return cached
-    try {
-      const r = await fetch(`${AV}?function=OVERVIEW&symbol=${ticker}&apikey=${KEY}`)
-      const j = await r.json()
-      if (j.Note || !j.Symbol) return null
-      const data = {
-        marketCap: j.MarketCapitalization,
-        peRatio: j.PERatio,
-        eps: j.EPS,
-        dividendYield: j.DividendYield,
-        beta: j.Beta,
-        week52High: j['52WeekHigh'],
-        week52Low: j['52WeekLow'],
-        sector: j.Sector,
-        industry: j.Industry,
-      }
-      overviewCache.current.set(ticker, data)
-      return data
-    } catch { return null }
-  }
-
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (searchQuery.length < 2) {
-      setSearchResults([]); setShowDropdown(false); setSearching(false)
+      setSearchResults([]); setShowDropdown(false); setSearching(false); setSearchError(null)
       return
     }
-    setSearching(true)
+    setSearching(true); setSearchError(null)
     debounceRef.current = setTimeout(async () => {
-      const results = await fetchSearch(searchQuery)
-      setSearchResults(results)
+      const res = await fetchSearch(searchQuery)
+      setSearchResults(res.results || [])
+      setSearchError(res.error || null)
       setShowDropdown(true)
       setActiveIndex(-1)
       setSearching(false)
@@ -306,7 +292,7 @@ export default function StockAnalysis() {
 
   useEffect(() => {
     const handler = (e) => {
-      if (searchRef.current && !searchRef.current.contains(e.target)) setShowDropdown(false)
+      if (searchRef.current && !searchRef.current.contains(e.target)) { setShowDropdown(false); setSearchError(null) }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -317,6 +303,7 @@ export default function StockAnalysis() {
     setSearchQuery('')
     setSearchResults([])
     setShowDropdown(false)
+    setSearchError(null)
   }
 
   const selectPopular = (t) => {
@@ -324,6 +311,7 @@ export default function StockAnalysis() {
     setSearchQuery('')
     setSearchResults([])
     setShowDropdown(false)
+    setSearchError(null)
   }
 
   const handleSearchKeyDown = (e) => {
@@ -336,7 +324,7 @@ export default function StockAnalysis() {
     } else if (e.key === 'Enter' && activeIndex >= 0) {
       selectStock(searchResults[activeIndex])
     } else if (e.key === 'Escape') {
-      setShowDropdown(false)
+      setShowDropdown(false); setSearchError(null)
     }
   }
 
@@ -389,7 +377,12 @@ export default function StockAnalysis() {
               ))}
             </div>
           )}
-          {showDropdown && searchResults.length === 0 && !searching && searchQuery.length >= 2 && (
+          {searchError && !searching && (
+            <div className="search-dropdown">
+              <div className="search-empty" style={{color:'var(--amber)'}}>{searchError}</div>
+            </div>
+          )}
+          {showDropdown && searchResults.length === 0 && !searching && !searchError && searchQuery.length >= 2 && (
             <div className="search-dropdown">
               <div className="search-empty">No results found</div>
             </div>
