@@ -7,28 +7,45 @@ const AV = 'https://www.alphavantage.co/query'
 const KEY = import.meta.env.VITE_ALPHA_KEY
 
 async function fetchDaily(ticker) {
-  const r = await fetch(`${AV}?function=TIME_SERIES_DAILY&symbol=${ticker}&apikey=${KEY}`)
-  const j = await r.json()
-  const ts = j['Time Series (Daily)']
-  if (!ts) return []
-  return Object.entries(ts).map(([date, v]) => ({
-    date, ts: new Date(date).getTime() / 1000,
-    open: +v['1. open'], high: +v['2. high'],
-    low: +v['3. low'], close: +v['4. close'], volume: +v['5. volume'],
-  })).reverse()
+  for (let a = 0; a < 2; a++) {
+    const r = await fetch(`${AV}?function=TIME_SERIES_DAILY&symbol=${ticker}&apikey=${KEY}`)
+    const j = await r.json()
+    const ts = j['Time Series (Daily)']
+    if (ts) return Object.entries(ts).map(([date, v]) => ({
+      date, ts: new Date(date).getTime() / 1000,
+      open: +v['1. open'], high: +v['2. high'],
+      low: +v['3. low'], close: +v['4. close'], volume: +v['5. volume'],
+    })).reverse()
+    if (j.Note && a === 0) await new Promise(r => setTimeout(r, 1500))
+    else return []
+  }
 }
 
 async function fetchWeekly(ticker) {
-  const r = await fetch(`${AV}?function=TIME_SERIES_WEEKLY&symbol=${ticker}&apikey=${KEY}`)
-  const j = await r.json()
-  const ts = j['Weekly Time Series']
-  if (!ts) return []
-  return Object.entries(ts).map(([date, v]) => ({
-    date, close: +v['4. close'], high: +v['2. high'], low: +v['3. low'],
-  })).reverse()
+  for (let a = 0; a < 2; a++) {
+    const r = await fetch(`${AV}?function=TIME_SERIES_WEEKLY&symbol=${ticker}&apikey=${KEY}`)
+    const j = await r.json()
+    const ts = j['Weekly Time Series']
+    if (ts) return Object.entries(ts).map(([date, v]) => ({
+      date, close: +v['4. close'], high: +v['2. high'], low: +v['3. low'],
+    })).reverse()
+    if (j.Note && a === 0) await new Promise(r => setTimeout(r, 1500))
+    else return []
+  }
 }
 
 async function fetchSearch(query) {
+  if (FH_KEY) {
+    try {
+      const r = await fetch(`${FH}/search?q=${encodeURIComponent(query)}&token=${FH_KEY}`)
+      const j = await r.json()
+      if (j.result && j.result.length > 0) {
+        return { results: j.result.filter(m => m.type === 'Common Stock').map(m => ({
+          symbol: m.displaySymbol, name: m.description, region: 'US',
+        })) }
+      }
+    } catch {}
+  }
   try {
     const r = await fetch(`${AV}?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${KEY}`)
     const j = await r.json()
