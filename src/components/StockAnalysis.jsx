@@ -627,6 +627,7 @@ export default function StockAnalysis() {
             <div className="sidebar-title">Financial Info</div>
             {data.earnings && <>
               <div className="fin-subtitle">Earnings Surprise</div>
+              <div className="seg-desc">How much actual EPS differed from analyst estimates. Surprise% = (actual &minus; estimate) &divide; estimate &times; 100. Positive = earnings beat, negative = miss.</div>
               <div className="earnings-table">
                 <div className="earnings-hdr">
                   <span>Quarter</span><span>Est</span><span>Act</span><span>Surp</span>
@@ -646,6 +647,7 @@ export default function StockAnalysis() {
             {data.recommendations && <>
               <div className="fin-divider"></div>
               <div className="fin-subtitle">Analyst Consensus</div>
+              <div className="seg-desc">Score ranges from &minus;2 (Strong Sell) to +2 (Strong Buy). Calculated from analyst ratings: SB(+2) B(+1) H(0) S(&minus;1) SS(&minus;2) weighted by count.</div>
               <div className="rec-bar">
                 {data.recommendations.strongBuy > 0 && <div className="rec-seg sb" style={{width:`${data.recommendations.strongBuy/data.recommendations.total*100}%`}} />}
                 {data.recommendations.buy > 0 && <div className="rec-seg buy" style={{width:`${data.recommendations.buy/data.recommendations.total*100}%`}} />}
@@ -671,6 +673,7 @@ export default function StockAnalysis() {
             <div className="sidebar-title">Key Levels</div>
             <div className="levels-section">
               <div className="levels-subtitle">Pivot Points</div>
+              <div className="seg-desc">Calculated from prior high, low, close: pivot = (H+L+C) &divide; 3. Price above pivot = bullish bias. R1/R2 = resistance (sell zones), S1/S2 = support (buy zones).</div>
               <div className="level-row"><span className="level-label">R2</span><span className="level-value" style={{color:'var(--red)'}}>${fmt(data.r2)}</span></div>
               <div className="level-row"><span className="level-label">R1</span><span className="level-value" style={{color:'var(--red)'}}>${fmt(data.r1)}</span></div>
               <div className="level-row"><span className="level-label pivot">Pivot</span><span className="level-value pivot">${fmt(data.pivot)}</span></div>
@@ -680,6 +683,7 @@ export default function StockAnalysis() {
             <div className="levels-divider"></div>
             <div className="levels-section">
               <div className="levels-subtitle">Fibonacci</div>
+              <div className="seg-desc">Drawn from period high&minus;low range. Levels show potential pullback zones before trend continues. 0.618 (golden ratio) is the most significant — if price holds here, trend is intact.</div>
               <div className="level-row"><span className="level-label">0.236</span><span className="level-value">${fmt(data.fib236)}</span></div>
               <div className="level-row"><span className="level-label">0.382</span><span className="level-value">${fmt(data.fib382)}</span></div>
               <div className="level-row"><span className="level-label">0.500</span><span className="level-value">${fmt(data.fib500)}</span></div>
