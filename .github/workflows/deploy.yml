@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 permissions:
   contents: read
@@ -26,7 +26,7 @@ jobs:
       - run: echo "VITE_TWELVEDATA_KEY=${{ secrets.VITE_TWELVEDATA_KEY }}" >> .env
       - run: echo "VITE_FINNHUB_KEY=${{ secrets.VITE_FINNHUB_KEY }}" >> .env
       - run: npm ci
-      - run: npm run build
+      - run: VITE_GIT_COMMIT=$(git rev-parse --short HEAD) npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

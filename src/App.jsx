@@ -18,7 +18,7 @@ function App() {
         <StockAnalysis />
       </main>
       <footer className="footer">
-        <p>stockalysis &copy; {new Date().getFullYear()} &mdash; Data: Twelve Data, Finnhub</p>
+        <p>stockalysis &copy; {new Date().getFullYear()} &mdash; Data: Twelve Data, Finnhub<span className="footer-rev"> rev {import.meta.env.VITE_GIT_COMMIT || 'dev'}</span></p>
       </footer>
     </div>
   )
