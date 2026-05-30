@@ -744,6 +744,7 @@ body {
   font-size: 0.7rem;
 }
 .footer-rev { opacity: 0.5; font-family: var(--font-mono); font-size: 0.6rem; }
+.footer .footer-copy { margin-top: 0.5rem; font-size: 0.65rem; opacity: 0.5; }
 
 /* === Volume === */
 

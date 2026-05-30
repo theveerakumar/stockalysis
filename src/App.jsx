@@ -18,7 +18,8 @@ function App() {
         <StockAnalysis />
       </main>
       <footer className="footer">
-        <p>stockalysis &copy; {new Date().getFullYear()} &mdash; Data: Twelve Data, Finnhub<span className="footer-rev"> rev {import.meta.env.VITE_GIT_COMMIT || 'dev'}</span></p>
+        <p>stockalysis <span className="footer-rev">v1.0.0</span></p>
+        <p className="footer-copy">Copyrights &copy; 2026 Veera Kumar, All rights reserved. | Made with &hearts; and &#9749; by Veera Kumar</p>
       </footer>
     </div>
   )
